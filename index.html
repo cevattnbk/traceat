@@ -1,0 +1,1216 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="description" content="TraceEat — Gıda şeffaflık platformu. QR tara, ürünün yolculuğunu keşfet.">
+<meta name="theme-color" content="#0f3d22">
+<title>TraceEat</title>
+
+<!-- PWA Manifest -->
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+
+<!-- Supabase -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- QR Scanner -->
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap');
+
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+:root{
+  --g:#1a6b3c;--gl:#e8f5ee;--gm:#2d9e5f;--gd:#0f3d22;
+  --a:#b85c00;--al:#fff3e0;--r:#c0392b;--rl:#fdecea;
+  --b:#1565c0;--bl:#e3f2fd;
+  --ink:#1c1c1a;--ink2:#5a5955;--ink3:#9e9c98;
+  --paper:#faf9f6;--card:#fff;--border:#e5e2db;--soft:#f2f0eb;
+  --rad:14px;--shadow:0 2px 20px rgba(0,0,0,.07);
+  --nav-h:54px;--tab-h:60px;
+}
+
+/* Dark mode */
+@media(prefers-color-scheme:dark){
+  :root{
+    --ink:#f0ede8;--ink2:#a8a49e;--ink3:#6b6760;
+    --paper:#1a1916;--card:#242220;--border:#38352f;--soft:#2a2825;
+  }
+}
+
+html,body{height:100%;overflow:hidden}
+body{font-family:'DM Sans',sans-serif;background:var(--paper);color:var(--ink);display:flex;flex-direction:column}
+
+/* ── NAV ── */
+.nav{background:var(--gd);height:var(--nav-h);display:flex;align-items:center;padding:0 16px;gap:10px;flex-shrink:0;position:relative;z-index:100}
+.nav-logo{font-family:'Fraunces',serif;font-size:20px;color:#fff;letter-spacing:-.3px}
+.nav-leaf{font-size:13px}
+.nav-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+.nav-lang{padding:4px 10px;border-radius:14px;font-size:11px;font-weight:500;cursor:pointer;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08);color:rgba(255,255,255,.8);font-family:'DM Sans',sans-serif}
+.nav-auth-btn{padding:5px 12px;border-radius:14px;font-size:12px;font-weight:500;cursor:pointer;border:none;background:rgba(255,255,255,.15);color:#fff;font-family:'DM Sans',sans-serif}
+
+/* ── CONTENT ── */
+.content{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch}
+
+/* ── BOTTOM TABS ── */
+.tab-bar{height:var(--tab-h);background:var(--card);border-top:1px solid var(--border);display:flex;align-items:stretch;flex-shrink:0;padding-bottom:env(safe-area-inset-bottom)}
+.tab-item{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;border:none;background:transparent;color:var(--ink3);font-family:'DM Sans',sans-serif;font-size:10px;font-weight:500;transition:color .2s;padding:8px 4px}
+.tab-item.active{color:var(--g)}
+.tab-icon{font-size:20px;line-height:1}
+
+/* ── PAGES ── */
+.page{display:none;padding:14px;max-width:680px;margin:0 auto;width:100%}
+.page.active{display:block;animation:appear .25s ease}
+@keyframes appear{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+
+/* ── CARDS ── */
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--rad);padding:14px 16px;margin-bottom:12px;box-shadow:var(--shadow)}
+.sec-lbl{font-size:11px;font-weight:600;color:var(--ink3);letter-spacing:.07em;text-transform:uppercase;margin-bottom:9px}
+
+/* ── ALERJEN CHİPS ── */
+.al-chips{display:flex;flex-wrap:wrap;gap:6px}
+.alc{padding:6px 12px;border-radius:20px;font-size:12px;font-weight:500;cursor:pointer;border:1.5px solid var(--border);background:var(--paper);color:var(--ink2);transition:all .15s;user-select:none;-webkit-user-select:none}
+.alc.on{background:var(--rl);border-color:var(--r);color:var(--r)}
+
+/* ── ÜRÜN CHİPS ── */
+.pchips{display:flex;gap:6px;flex-wrap:wrap}
+.pchip{padding:8px 14px;border-radius:20px;font-size:12px;font-weight:500;cursor:pointer;border:1.5px solid var(--border);background:var(--paper);color:var(--ink);transition:all .2s;display:flex;align-items:center;gap:5px;min-height:44px}
+.pchip:hover{border-color:var(--gm);background:var(--gl)}
+.pchip.sel{background:var(--g);color:#fff;border-color:var(--g)}
+.wdot{width:6px;height:6px;border-radius:50%;background:#e74c3c;display:none;flex-shrink:0}
+.pchip.hw .wdot{display:block}
+
+/* ── BANNER ── */
+.banner{display:none;padding:10px 14px;border-radius:10px;font-size:13px;font-weight:500;align-items:center;gap:8px;margin-bottom:12px;border:1px solid}
+.banner.show{display:flex}
+.banner.danger{background:var(--rl);border-color:#f5c1c1;color:var(--r)}
+.banner.safe{background:var(--gl);border-color:#a5d6a7;color:var(--g)}
+
+/* ── ÜRÜN KARTI ── */
+.pcard{display:none;margin-bottom:12px;border-radius:var(--rad);overflow:hidden;box-shadow:var(--shadow)}
+.pcard.show{display:block;animation:appear .3s ease}
+.pcard-hd{padding:16px 18px;display:flex;align-items:center;gap:12px}
+.pcard-em{font-size:34px;width:52px;height:52px;border-radius:10px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.pcard-nm{font-family:'Fraunces',serif;font-size:17px;color:#fff;line-height:1.2}
+.pcard-br{font-size:11px;opacity:.75;color:#fff;margin-top:2px}
+.pcard-sc{margin-left:auto;width:40px;height:40px;border-radius:50%;border:2px solid rgba(255,255,255,.4);display:flex;align-items:center;justify-content:center;font-family:'Fraunces',serif;font-size:17px;color:#fff;flex-shrink:0}
+.qi-row{display:grid;grid-template-columns:repeat(3,1fr);padding:10px 18px;border-top:1px solid rgba(255,255,255,.12)}
+.qi-v{font-size:12px;font-weight:500;color:#fff;text-align:center}
+.qi-l{font-size:10px;color:rgba(255,255,255,.65);text-align:center;margin-top:1px}
+
+/* ── İÇ TABS ── */
+.itabs{display:flex;gap:4px;padding:10px 13px 0;background:var(--card);border-left:1px solid var(--border);border-right:1px solid var(--border);overflow-x:auto;-webkit-overflow-scrolling:touch}
+.itab{padding:6px 12px;border-radius:8px;font-size:12px;font-weight:500;cursor:pointer;border:1px solid transparent;color:var(--ink2);background:transparent;transition:all .2s;white-space:nowrap;font-family:'DM Sans',sans-serif;min-height:36px}
+.itab.active{background:var(--g);color:#fff}
+.isec{display:none;padding:13px 15px;background:var(--card);border:1px solid var(--border);border-top:none;border-radius:0 0 var(--rad) var(--rad)}
+.isec.active{display:block;animation:appear .2s ease}
+
+/* Journey */
+.jsteps{position:relative}
+.jline{position:absolute;left:13px;top:8px;bottom:8px;width:2px;background:linear-gradient(to bottom,var(--gm),var(--a),var(--r));border-radius:2px}
+.jstep{display:flex;gap:11px;margin-bottom:10px;position:relative}
+.jdot{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;z-index:1;border:2px solid var(--paper)}
+.farm{background:#e8f5ee}.proc{background:#fff3e0}.lab{background:#e8eaf6}.truck{background:#e0f7fa}.store{background:#fce4ec}
+.jinfo{background:var(--soft);border-radius:8px;padding:9px 11px;flex:1;border:1px solid var(--border)}
+.jnm{font-size:12px;font-weight:600;color:var(--ink)}
+.jdt{font-size:11px;color:var(--ink2);margin-top:2px;line-height:1.5}
+.jd{font-size:10px;color:var(--ink3);margin-top:3px}
+.jcert{display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;background:var(--gl);color:var(--g);margin-top:3px}
+.certs{display:flex;gap:5px;flex-wrap:wrap;margin-top:9px}
+.cert{padding:3px 8px;background:var(--gl);border:1px solid #a5d6a7;border-radius:5px;font-size:10px;color:var(--g);font-weight:500}
+
+/* Ingredients */
+.ing-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.ing-item{background:var(--soft);border-radius:8px;padding:10px;border:1px solid var(--border)}
+.ing-item.ahi{border-color:var(--r);background:var(--rl)}
+.ing-nm{font-size:12px;font-weight:500;color:var(--ink)}
+.ing-a{font-size:11px;color:var(--ink2);margin-top:1px}
+.itag{display:inline-block;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:600;margin-top:4px}
+.safe{background:var(--gl);color:var(--g)}.caution{background:var(--al);color:var(--a)}.warn{background:var(--rl);color:var(--r)}
+.apill{display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;background:#fce4ec;color:#c62828;margin-left:3px}
+
+/* Nutrition */
+.nut-list{display:flex;flex-direction:column;gap:7px}
+.nut-row{display:flex;align-items:center;gap:8px}
+.nut-l{font-size:11px;color:var(--ink2);width:86px;flex-shrink:0}
+.nut-bg{flex:1;height:6px;background:var(--border);border-radius:4px;overflow:hidden}
+.nut-f{height:100%;border-radius:4px;transition:width 1s .2s ease}
+.nut-v{font-size:11px;font-weight:500;width:46px;text-align:right;flex-shrink:0;color:var(--ink)}
+
+/* Health */
+.h-ctr{text-align:center;padding:13px 0 8px}
+.h-ring{width:80px;height:80px;border-radius:50%;margin:0 auto 10px;display:flex;align-items:center;justify-content:center;font-family:'Fraunces',serif;font-size:28px}
+.ra{background:var(--gl);color:var(--g);border:3px solid var(--g)}
+.rb{background:#e8f5e9;color:#388e3c;border:3px solid #388e3c}
+.rc{background:var(--al);color:var(--a);border:3px solid var(--a)}
+.h-ttl{font-size:14px;font-weight:600;margin-bottom:3px;color:var(--ink)}
+.h-dsc{font-size:12px;color:var(--ink2);max-width:280px;margin:0 auto;line-height:1.6}
+.alerts{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+.alert{display:flex;gap:7px;padding:9px 11px;border-radius:8px;font-size:12px;align-items:flex-start;border:1px solid;line-height:1.5}
+.alert.ok{background:var(--gl);border-color:#a5d6a7;color:var(--g)}
+.alert.info{background:var(--bl);border-color:#90caf9;color:var(--b)}
+.alert.warn{background:var(--al);border-color:#ffcc80;color:var(--a)}
+.alert.danger{background:var(--rl);border-color:#ef9a9a;color:var(--r)}
+
+/* ── QR SCANNER ── */
+.qr-wrap{position:relative;border-radius:var(--rad);overflow:hidden;background:#000;aspect-ratio:1}
+.qr-video{width:100%;height:100%;object-fit:cover;display:block}
+.qr-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
+.qr-frame{width:60%;aspect-ratio:1;border:2px solid rgba(255,255,255,.8);border-radius:12px;box-shadow:0 0 0 9999px rgba(0,0,0,.4)}
+.qr-scan-line{position:absolute;left:20%;right:20%;height:2px;background:linear-gradient(90deg,transparent,#4ade80,transparent);animation:scanY 2s ease-in-out infinite}
+@keyframes scanY{0%,100%{top:20%}50%{top:78%}}
+.qr-status{text-align:center;padding:10px;font-size:13px;color:var(--ink2);margin-top:8px}
+
+/* ── AUTH ── */
+.auth-wrap{max-width:380px;margin:0 auto;padding:24px 16px}
+.auth-logo{text-align:center;margin-bottom:24px}
+.auth-logo-text{font-family:'Fraunces',serif;font-size:28px;color:var(--g)}
+.auth-title{font-size:18px;font-weight:600;margin-bottom:4px;color:var(--ink)}
+.auth-sub{font-size:13px;color:var(--ink2);margin-bottom:20px}
+.form-group{margin-bottom:14px}
+.form-label{font-size:12px;font-weight:500;color:var(--ink2);margin-bottom:5px;display:block}
+.form-input{width:100%;padding:11px 13px;border:1px solid var(--border);border-radius:10px;font-size:14px;font-family:'DM Sans',sans-serif;background:var(--paper);color:var(--ink);outline:none;transition:border-color .2s;-webkit-appearance:none}
+.form-input:focus{border-color:var(--gm)}
+.btn-primary{width:100%;padding:13px;background:var(--g);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .2s;margin-top:4px}
+.btn-primary:hover{background:var(--gd)}
+.btn-primary:disabled{background:var(--ink3);cursor:not-allowed}
+.btn-secondary{width:100%;padding:11px;background:transparent;color:var(--ink2);border:1px solid var(--border);border-radius:10px;font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;margin-top:8px}
+.auth-switch{text-align:center;font-size:13px;color:var(--ink2);margin-top:14px}
+.auth-switch a{color:var(--g);cursor:pointer;font-weight:500}
+.auth-msg{padding:10px 13px;border-radius:8px;font-size:12px;margin-bottom:12px;display:none}
+.auth-msg.error{background:var(--rl);color:var(--r);border:1px solid #f5c1c1;display:block}
+.auth-msg.success{background:var(--gl);color:var(--g);border:1px solid #a5d6a7;display:block}
+
+/* ── ALIŞVERİŞ LİSTESİ ── */
+.list-add{display:flex;gap:8px;margin-bottom:12px}
+.list-input{flex:1;padding:10px 13px;border:1px solid var(--border);border-radius:10px;font-size:13px;font-family:'DM Sans',sans-serif;background:var(--paper);color:var(--ink);outline:none;min-height:44px}
+.list-input:focus{border-color:var(--gm)}
+.add-btn{padding:10px 16px;background:var(--g);color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap;min-height:44px}
+.list-item{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--border);transition:background .15s}
+.list-item:last-child{border-bottom:none}
+.list-item.checked{opacity:.5}
+.list-item.danger-bg{background:#fff8f8;border-left:3px solid var(--r)}
+.list-check{width:22px;height:22px;border-radius:6px;border:1.5px solid var(--border);cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;background:var(--paper);min-width:22px}
+.list-check.done{background:var(--g);border-color:var(--g);color:#fff}
+.list-item-nm{font-size:13px;font-weight:500;flex:1;color:var(--ink)}
+.list-item-sub{font-size:11px;color:var(--ink2);margin-top:1px}
+.list-del{width:28px;height:28px;border-radius:6px;border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:16px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+
+/* ── AI KOÇ ── */
+.chat{padding:13px;min-height:200px;max-height:340px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;-webkit-overflow-scrolling:touch}
+.msg{display:flex;gap:7px;animation:appear .2s ease}
+.msg.user{flex-direction:row-reverse}
+.bubble{max-width:85%;padding:9px 12px;border-radius:12px;font-size:13px;line-height:1.6;color:var(--ink)}
+.msg.ai .bubble{background:var(--soft);border:1px solid var(--border);border-radius:3px 12px 12px 12px}
+.msg.user .bubble{background:var(--g);color:#fff;border-radius:12px 3px 12px 12px}
+.m-av{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;margin-top:2px}
+.msg.ai .m-av{background:var(--gl);color:var(--g)}
+.msg.user .m-av{background:var(--gd);color:#fff}
+.td{width:6px;height:6px;border-radius:50%;background:var(--ink3);animation:tdot .9s ease-in-out infinite}
+.td:nth-child(2){animation-delay:.15s}.td:nth-child(3){animation-delay:.3s}
+@keyframes tdot{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-5px)}}
+.chat-input-row{padding:10px 14px;border-top:1px solid var(--border);display:flex;gap:7px;align-items:flex-end}
+.ci{flex:1;border:1px solid var(--border);border-radius:10px;padding:8px 11px;font-size:13px;font-family:'DM Sans',sans-serif;background:var(--soft);resize:none;min-height:40px;max-height:80px;outline:none;color:var(--ink);line-height:1.5;-webkit-appearance:none}
+.ci:focus{border-color:var(--gm);background:var(--card)}
+.send{width:40px;height:40px;border-radius:10px;background:var(--g);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.send:disabled{background:var(--border)}
+.send svg{width:16px;height:16px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* ── KVKK BANNER ── */
+.kvkk-bar{position:fixed;bottom:calc(var(--tab-h) + env(safe-area-inset-bottom));left:0;right:0;background:var(--gd);padding:12px 16px;display:flex;align-items:center;gap:10px;z-index:200;font-size:12px;color:rgba(255,255,255,.9);display:none}
+.kvkk-bar.show{display:flex}
+.kvkk-bar a{color:#4ade80;text-decoration:underline;cursor:pointer}
+.kvkk-ok{padding:6px 14px;background:var(--gm);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:500;cursor:pointer;white-space:nowrap;font-family:'DM Sans',sans-serif}
+
+/* ── ÜRETİCİ ── */
+.stats3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.sbox{background:var(--card);border:1px solid var(--border);border-radius:var(--rad);padding:12px;text-align:center}
+.snum{font-family:'Fraunces',serif;font-size:22px;color:var(--g)}
+.slbl{font-size:10px;color:var(--ink3);margin-top:2px;font-weight:500;text-transform:uppercase;letter-spacing:.04em}
+.prow{background:var(--card);border:1px solid var(--border);border-radius:var(--rad);padding:12px 14px;display:flex;align-items:center;gap:10px;cursor:pointer;transition:all .2s;margin-bottom:7px}
+.prow:hover{border-color:var(--gm);background:var(--gl)}
+.sc-a{background:var(--gl);color:var(--g);padding:3px 8px;border-radius:5px;font-size:11px;font-weight:700}
+.sc-b{background:#e8f5e9;color:#388e3c;padding:3px 8px;border-radius:5px;font-size:11px;font-weight:700}
+.sc-c{background:var(--al);color:var(--a);padding:3px 8px;border-radius:5px;font-size:11px;font-weight:700}
+
+/* ── LOADING ── */
+.skeleton{background:linear-gradient(90deg,var(--soft) 25%,var(--border) 50%,var(--soft) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:8px}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.loading-wrap{padding:20px;display:flex;flex-direction:column;gap:10px}
+.sk-line{height:14px}.sk-line.wide{width:100%}.sk-line.med{width:70%}.sk-line.short{width:40%}
+
+/* ── TOAST ── */
+.toast{position:fixed;bottom:calc(var(--tab-h) + 12px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--paper);padding:10px 18px;border-radius:20px;font-size:13px;font-weight:500;opacity:0;transition:all .3s;pointer-events:none;white-space:nowrap;z-index:300}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* ── LANG MODAL ── */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:400;display:none;align-items:flex-end;justify-content:center}
+.modal-bg.show{display:flex}
+.modal{background:var(--card);border-radius:var(--rad) var(--rad) 0 0;padding:16px;width:100%;max-width:480px}
+.modal-title{font-size:15px;font-weight:600;margin-bottom:14px;color:var(--ink)}
+.lang-option{display:flex;align-items:center;gap:12px;padding:12px;border-radius:10px;cursor:pointer;transition:background .15s;margin-bottom:4px;min-height:48px}
+.lang-option:hover,.lang-option.sel{background:var(--gl)}
+.lang-flag-big{font-size:24px}
+.lang-nm{font-size:14px;font-weight:500;color:var(--ink)}
+.lang-native{font-size:12px;color:var(--ink2)}
+.modal-close{width:100%;padding:12px;background:var(--soft);color:var(--ink2);border:none;border-radius:10px;font-size:14px;cursor:pointer;font-family:'DM Sans',sans-serif;margin-top:8px}
+
+/* Mobile safe */
+@media(max-width:400px){
+  .ing-grid{grid-template-columns:1fr}
+  .stats3{grid-template-columns:repeat(3,1fr)}
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<div class="nav">
+  <span class="nav-leaf">🌿</span>
+  <span class="nav-logo">TraceEat</span>
+  <div class="nav-right">
+    <button class="nav-lang" onclick="openLangModal()" id="lang-btn">🇹🇷 TR</button>
+    <button class="nav-auth-btn" onclick="handleAuthBtn()" id="auth-btn">Giriş</button>
+  </div>
+</div>
+
+<!-- CONTENT -->
+<div class="content" id="content">
+
+  <!-- TÜKETICI -->
+  <div class="page active" id="page-scan">
+    <!-- QR Scanner -->
+    <div class="card" id="qr-card">
+      <div class="sec-lbl" id="lbl-scan">📷 QR Tara</div>
+      <div class="qr-wrap" id="qr-wrap" style="display:none">
+        <video class="qr-video" id="qr-video" autoplay playsinline muted></video>
+        <div class="qr-overlay">
+          <div class="qr-frame"></div>
+          <div class="qr-scan-line"></div>
+        </div>
+      </div>
+      <button onclick="toggleCamera()" id="cam-btn" style="width:100%;padding:12px;background:var(--g);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;margin-bottom:10px">📷 Kamerayı Aç</button>
+      <div class="qr-status" id="qr-status">veya aşağıdan ürün seç</div>
+    </div>
+
+    <!-- Alerjen Filtre -->
+    <div class="card">
+      <div class="sec-lbl" id="lbl-al">🛡️ Alerjen Filtrem</div>
+      <div class="al-chips" id="al-chips"></div>
+    </div>
+
+    <!-- Ürün Seç -->
+    <div class="card">
+      <div class="sec-lbl" id="lbl-prod">Ürün Seç</div>
+      <div class="pchips" id="pchips">
+        <div class="loading-wrap" style="padding:0;flex-direction:row;gap:8px">
+          <div class="skeleton sk-line" style="height:36px;width:100px;border-radius:20px"></div>
+          <div class="skeleton sk-line" style="height:36px;width:80px;border-radius:20px"></div>
+          <div class="skeleton sk-line" style="height:36px;width:90px;border-radius:20px"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Banner -->
+    <div class="banner" id="banner"></div>
+
+    <!-- Ürün Kartı -->
+    <div class="pcard" id="pcard">
+      <div class="pcard-hd" id="pcard-hd">
+        <div class="pcard-em" id="pc-em"></div>
+        <div><div class="pcard-nm" id="pc-nm"></div><div class="pcard-br" id="pc-br"></div></div>
+        <div class="pcard-sc" id="pc-sc"></div>
+      </div>
+      <div class="qi-row" id="pc-qi"></div>
+      <div class="itabs" id="itabs"></div>
+      <div class="isec active" id="isec-j"><div class="jsteps"><div class="jline"></div><div id="j-steps"></div></div><div class="certs" id="j-certs"></div></div>
+      <div class="isec" id="isec-i"><div class="ing-grid" id="ing-c"></div></div>
+      <div class="isec" id="isec-n"><div class="nut-list" id="nut-c"></div></div>
+      <div class="isec" id="isec-h">
+        <div class="h-ctr"><div class="h-ring" id="h-ring"></div><div class="h-ttl" id="h-ttl"></div><div class="h-dsc" id="h-dsc"></div></div>
+        <div class="alerts" id="h-alerts"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ALIŞVERİŞ LİSTESİ -->
+  <div class="page" id="page-list">
+    <div style="padding:14px 0 10px">
+      <div style="font-family:'Fraunces',serif;font-size:22px;color:var(--ink)" id="list-title">Alışveriş Listesi</div>
+      <div style="font-size:12px;color:var(--ink2);margin-top:2px" id="list-sub">Alerjene göre güvenli ürünler</div>
+    </div>
+    <div class="list-add">
+      <input class="list-input" id="lst-input" placeholder="Ürün ekle..." onkeydown="if(event.key==='Enter')addListItem()">
+      <button class="add-btn" onclick="addListItem()" id="lst-add-btn">+ Ekle</button>
+    </div>
+    <div class="card" style="padding:0;overflow:hidden">
+      <div id="list-items"><div style="padding:24px;text-align:center;color:var(--ink3);font-size:13px" id="list-empty">Henüz ürün eklenmedi</div></div>
+    </div>
+  </div>
+
+  <!-- AI KOÇ -->
+  <div class="page" id="page-coach">
+    <div style="padding:14px 0 10px">
+      <div style="font-family:'Fraunces',serif;font-size:22px;color:var(--ink)" id="coach-title">AI Gıda Koçu</div>
+      <div style="font-size:12px;color:var(--ink2);margin-top:2px" id="coach-sub">Gıda mühendisliği destekli analiz</div>
+    </div>
+    <div class="card" style="padding:0;overflow:hidden">
+      <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;background:var(--gd)">
+        <div style="width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:15px">🌿</div>
+        <div><div style="font-size:13px;font-weight:500;color:#fff" id="coach-nm">TraceEat AI Koçu</div><div style="font-size:11px;color:rgba(255,255,255,.6);display:flex;align-items:center;gap:4px"><span style="width:6px;height:6px;border-radius:50%;background:#4ade80;display:inline-block" id="coach-dot"></span><span id="coach-st">Ürün seçmeyi bekliyor</span></div></div>
+      </div>
+      <div style="padding:10px 13px;border-bottom:1px solid var(--border);display:flex;gap:5px;flex-wrap:wrap" id="coach-prods"></div>
+      <div class="chat" id="chat">
+        <div style="text-align:center;padding:20px;color:var(--ink3);font-size:13px">
+          <div style="font-size:28px;margin-bottom:8px">🥗</div>
+          <div style="font-weight:500;color:var(--ink);margin-bottom:3px" id="coach-empty-title">Yukarıdan bir ürün seç</div>
+          <div id="coach-empty-sub">Besin değeri ve sağlık etkileri hakkında sor</div>
+        </div>
+      </div>
+      <div style="padding:8px 13px 10px;border-top:1px solid var(--border);display:flex;gap:5px;flex-wrap:wrap" id="qq-row" style="display:none"></div>
+      <div class="chat-input-row">
+        <textarea class="ci" id="ci" placeholder="Sor..." rows="1"
+          onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendCoach()}"
+          oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,80)+'px'"></textarea>
+        <button class="send" id="send-btn" onclick="sendCoach()" disabled>
+          <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PROFİL / AUTH -->
+  <div class="page" id="page-profile">
+    <div id="auth-section">
+      <div class="auth-wrap">
+        <div class="auth-logo"><span class="auth-logo-text">🌿 TraceEat</span></div>
+        <div id="auth-msg" class="auth-msg"></div>
+        <!-- GİRİŞ FORMU -->
+        <div id="login-form">
+          <div class="auth-title" id="login-title">Giriş Yap</div>
+          <div class="auth-sub" id="login-sub">Hesabına giriş yap</div>
+          <div class="form-group">
+            <label class="form-label" id="lbl-email">E-posta</label>
+            <input class="form-input" type="email" id="login-email" placeholder="ornek@email.com">
+          </div>
+          <div class="form-group">
+            <label class="form-label" id="lbl-pass">Şifre</label>
+            <input class="form-input" type="password" id="login-pass" placeholder="••••••••">
+          </div>
+          <button class="btn-primary" onclick="signIn()" id="login-btn">Giriş Yap</button>
+          <div class="auth-switch" id="switch-to-register">Hesabın yok mu? <a onclick="showRegister()">Kayıt ol</a></div>
+        </div>
+        <!-- KAYIT FORMU -->
+        <div id="register-form" style="display:none">
+          <div class="auth-title" id="reg-title">Hesap Oluştur</div>
+          <div class="auth-sub" id="reg-sub">TraceEat'e hoş geldin</div>
+          <div class="form-group">
+            <label class="form-label" id="lbl-name">Ad Soyad</label>
+            <input class="form-input" type="text" id="reg-name" placeholder="Ad Soyad">
+          </div>
+          <div class="form-group">
+            <label class="form-label">E-posta</label>
+            <input class="form-input" type="email" id="reg-email" placeholder="ornek@email.com">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Şifre</label>
+            <input class="form-input" type="password" id="reg-pass" placeholder="En az 6 karakter">
+          </div>
+          <button class="btn-primary" onclick="signUp()" id="reg-btn">Kayıt Ol</button>
+          <div class="auth-switch">Zaten hesabın var mı? <a onclick="showLogin()">Giriş yap</a></div>
+        </div>
+      </div>
+    </div>
+    <!-- PROFIL (giriş sonrası) -->
+    <div id="profile-section" style="display:none">
+      <div style="padding:14px 0 10px">
+        <div style="font-family:'Fraunces',serif;font-size:22px;color:var(--ink)" id="profile-title">Profilim</div>
+      </div>
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+          <div style="width:48px;height:48px;border-radius:50%;background:var(--gl);display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--g);font-weight:600" id="profile-avatar">?</div>
+          <div>
+            <div style="font-size:15px;font-weight:600;color:var(--ink)" id="profile-name">-</div>
+            <div style="font-size:12px;color:var(--ink2)" id="profile-email">-</div>
+          </div>
+        </div>
+        <button class="btn-primary" onclick="signOut()" style="background:var(--r)">Çıkış Yap</button>
+      </div>
+      <div class="card">
+        <div class="sec-lbl" id="lbl-my-al">Alerjenlerim (kayıtlı)</div>
+        <div class="al-chips" id="profile-al-chips"></div>
+        <button onclick="saveAllergens()" style="margin-top:10px;padding:9px 16px;background:var(--g);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif" id="save-al-btn">Kaydet</button>
+      </div>
+      <div class="card">
+        <div class="sec-lbl">Tarama Geçmişim</div>
+        <div id="scan-history-list"><div style="font-size:13px;color:var(--ink3)">Henüz tarama yok</div></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- BOTTOM TABS -->
+<div class="tab-bar">
+  <button class="tab-item active" onclick="showTab('scan',this)" id="tab-scan">
+    <span class="tab-icon">🔍</span><span id="tab-lbl-scan">Tara</span>
+  </button>
+  <button class="tab-item" onclick="showTab('list',this)" id="tab-list">
+    <span class="tab-icon">🛒</span><span id="tab-lbl-list">Liste</span>
+  </button>
+  <button class="tab-item" onclick="showTab('coach',this)" id="tab-coach">
+    <span class="tab-icon">🤖</span><span id="tab-lbl-coach">AI Koç</span>
+  </button>
+  <button class="tab-item" onclick="showTab('profile',this)" id="tab-profile">
+    <span class="tab-icon">👤</span><span id="tab-lbl-profile">Profil</span>
+  </button>
+</div>
+
+<!-- KVKK Banner -->
+<div class="kvkk-bar" id="kvkk-bar">
+  <span style="flex:1">🍪 Deneyimini iyileştirmek için çerezler kullanıyoruz. <a onclick="showPrivacy()">Gizlilik Politikası</a></span>
+  <button class="kvkk-ok" onclick="acceptCookies()">Kabul Et</button>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- Dil Modal -->
+<div class="modal-bg" id="lang-modal" onclick="if(event.target===this)closeLangModal()">
+  <div class="modal">
+    <div class="modal-title" id="lang-modal-title">Dil Seç</div>
+    <div id="lang-options"></div>
+    <button class="modal-close" onclick="closeLangModal()" id="modal-close-btn">Kapat</button>
+  </div>
+</div>
+
+<script>
+// ═══ SUPABASE ═══
+const { createClient } = supabase;
+const SB = createClient(
+  'https://qhnuhfzlqzmlsizvyyck.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFobnVoZnpscXptbHNpenZ5eWNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3MDA5MjAsImV4cCI6MjA5NDI3NjkyMH0.ZEgiyiazwI2kS9j098wSSByitFGd75NLu9cCPr4F3CE'
+);
+
+// ═══ DİL SİSTEMİ ═══
+const LANGS = {
+  tr:{flag:'🇹🇷',name:'Türkçe',native:'Türkçe',
+    lblScan:'📷 QR Tara',lblAl:'🛡️ Alerjen Filtrem',lblProd:'Ürün Seç',
+    tabScan:'Tara',tabList:'Liste',tabCoach:'AI Koç',tabProfile:'Profil',
+    listTitle:'Alışveriş Listesi',listSub:'Alerjene göre güvenli',
+    coachTitle:'AI Gıda Koçu',coachSub:'Gıda mühendisliği destekli',
+    profileTitle:'Profilim',authBtn:'Giriş',authBtnOut:'Çıkış',
+    loginTitle:'Giriş Yap',loginSub:'Hesabına giriş yap',
+    regTitle:'Hesap Oluştur',regSub:'TraceEat\'e hoş geldin',
+    lblEmail:'E-posta',lblPass:'Şifre',lblName:'Ad Soyad',
+    saveAl:'Kaydet',myAl:'Alerjenlerim',
+    bannerD:'⚠️ Alerjen uyarısı:',bannerC:'içeriyor',
+    bannerS:'✓ Alerjenler bu üründe',bannerSE:'bulunmuyor',
+    tabJ:'Yolculuk',tabI:'Bileşenler',tabN:'Besin',tabH:'Sağlık',
+    tagSafe:'✓ Güvenli',tagCaution:'Dikkat',tagWarn:'⚠ Uyarı',
+    coachWait:'Ürün seçmeyi bekliyor',coachReady:'Hazır',coachThink:'Analiz ediyor...',
+    coachEmptyT:'Yukarıdan bir ürün seç',coachEmptyS:'Besin değeri ve sağlık etkileri hakkında sor',
+    addToList:'+ Ekle',listEmpty:'Henüz ürün eklenmedi',
+    langTitle:'Dil Seç',closeBtn:'Kapat',
+    lstInputPh:'Ürün ekle...',camBtn:'📷 Kamerayı Aç',camClose:'📷 Kamerayı Kapat',
+    qrStatus:'veya aşağıdan ürün seç',qrScanning:'QR kod aranıyor...',
+    al:[{id:'gluten',l:'Gluten',e:'🌾'},{id:'laktoz',l:'Laktoz',e:'🥛'},{id:'yumurta',l:'Yumurta',e:'🥚'},{id:'fistik',l:'Fıstık',e:'🥜'},{id:'susam',l:'Susam',e:'🌰'},{id:'soya',l:'Soya',e:'🫘'}]},
+  en:{flag:'🇬🇧',name:'English',native:'English',
+    lblScan:'📷 Scan QR',lblAl:'🛡️ My Allergen Filter',lblProd:'Select Product',
+    tabScan:'Scan',tabList:'List',tabCoach:'AI Coach',tabProfile:'Profile',
+    listTitle:'Shopping List',listSub:'Safe products by allergen',
+    coachTitle:'AI Food Coach',coachSub:'Food engineering powered',
+    profileTitle:'My Profile',authBtn:'Sign In',authBtnOut:'Sign Out',
+    loginTitle:'Sign In',loginSub:'Welcome back',
+    regTitle:'Create Account',regSub:'Join TraceEat',
+    lblEmail:'Email',lblPass:'Password',lblName:'Full Name',
+    saveAl:'Save',myAl:'My Allergens',
+    bannerD:'⚠️ Allergen warning:',bannerC:'contains',
+    bannerS:'✓ Your allergens are',bannerSE:'not found in this product',
+    tabJ:'Journey',tabI:'Ingredients',tabN:'Nutrition',tabH:'Health',
+    tagSafe:'✓ Safe',tagCaution:'Caution',tagWarn:'⚠ Warning',
+    coachWait:'Waiting for product selection',coachReady:'Ready',coachThink:'Analysing...',
+    coachEmptyT:'Select a product above',coachEmptyS:'Ask about nutrition and health effects',
+    addToList:'+ Add',listEmpty:'No items yet',
+    langTitle:'Select Language',closeBtn:'Close',
+    lstInputPh:'Add product...',camBtn:'📷 Open Camera',camClose:'📷 Close Camera',
+    qrStatus:'or select product below',qrScanning:'Scanning for QR code...',
+    al:[{id:'gluten',l:'Gluten',e:'🌾'},{id:'laktoz',l:'Lactose',e:'🥛'},{id:'yumurta',l:'Eggs',e:'🥚'},{id:'fistik',l:'Peanuts',e:'🥜'},{id:'susam',l:'Sesame',e:'🌰'},{id:'soya',l:'Soy',e:'🫘'}]},
+  de:{flag:'🇩🇪',name:'Deutsch',native:'Deutsch',
+    lblScan:'📷 QR Scannen',lblAl:'🛡️ Mein Allergenfilter',lblProd:'Produkt wählen',
+    tabScan:'Scan',tabList:'Liste',tabCoach:'KI Coach',tabProfile:'Profil',
+    listTitle:'Einkaufsliste',listSub:'Sichere Produkte nach Allergen',
+    coachTitle:'KI Ernährungscoach',coachSub:'Lebensmitteltechnik-gestützt',
+    profileTitle:'Mein Profil',authBtn:'Anmelden',authBtnOut:'Abmelden',
+    loginTitle:'Anmelden',loginSub:'Willkommen zurück',
+    regTitle:'Konto erstellen',regSub:'Tritt TraceEat bei',
+    lblEmail:'E-Mail',lblPass:'Passwort',lblName:'Vollständiger Name',
+    saveAl:'Speichern',myAl:'Meine Allergene',
+    bannerD:'⚠️ Allergenwarnung:',bannerC:'enthält',
+    bannerS:'✓ Deine Allergene sind',bannerSE:'nicht enthalten',
+    tabJ:'Herkunft',tabI:'Zutaten',tabN:'Nährwerte',tabH:'Gesundheit',
+    tagSafe:'✓ Sicher',tagCaution:'Vorsicht',tagWarn:'⚠ Warnung',
+    coachWait:'Warte auf Produktauswahl',coachReady:'Bereit',coachThink:'Analysiere...',
+    coachEmptyT:'Wähle oben ein Produkt',coachEmptyS:'Frag nach Nährwerten und Gesundheit',
+    addToList:'+ Hinzu',listEmpty:'Noch keine Artikel',
+    langTitle:'Sprache wählen',closeBtn:'Schließen',
+    lstInputPh:'Produkt hinzufügen...',camBtn:'📷 Kamera öffnen',camClose:'📷 Kamera schließen',
+    qrStatus:'oder Produkt unten wählen',qrScanning:'Suche nach QR-Code...',
+    al:[{id:'gluten',l:'Gluten',e:'🌾'},{id:'laktoz',l:'Laktose',e:'🥛'},{id:'yumurta',l:'Eier',e:'🥚'},{id:'fistik',l:'Erdnüsse',e:'🥜'},{id:'susam',l:'Sesam',e:'🌰'},{id:'soya',l:'Soja',e:'🫘'}]},
+  fr:{flag:'🇫🇷',name:'Français',native:'Français',
+    lblScan:'📷 Scanner QR',lblAl:'🛡️ Mon filtre allergènes',lblProd:'Choisir un produit',
+    tabScan:'Scanner',tabList:'Liste',tabCoach:'Coach IA',tabProfile:'Profil',
+    listTitle:'Liste de courses',listSub:'Produits sûrs par allergène',
+    coachTitle:'Coach Alimentaire IA',coachSub:'Soutenu par l\'ingénierie alimentaire',
+    profileTitle:'Mon Profil',authBtn:'Connexion',authBtnOut:'Déconnexion',
+    loginTitle:'Connexion',loginSub:'Bon retour',
+    regTitle:'Créer un compte',regSub:'Rejoindre TraceEat',
+    lblEmail:'E-mail',lblPass:'Mot de passe',lblName:'Nom complet',
+    saveAl:'Enregistrer',myAl:'Mes allergènes',
+    bannerD:'⚠️ Alerte allergène :',bannerC:'contient',
+    bannerS:'✓ Vos allergènes sont',bannerSE:'absents de ce produit',
+    tabJ:'Traçabilité',tabI:'Ingrédients',tabN:'Nutrition',tabH:'Santé',
+    tagSafe:'✓ Sûr',tagCaution:'Attention',tagWarn:'⚠ Avert.',
+    coachWait:'Attente de sélection',coachReady:'Prêt',coachThink:'Analyse...',
+    coachEmptyT:'Sélectionnez un produit',coachEmptyS:'Posez des questions sur la nutrition',
+    addToList:'+ Ajouter',listEmpty:'Aucun article',
+    langTitle:'Choisir la langue',closeBtn:'Fermer',
+    lstInputPh:'Ajouter un produit...',camBtn:'📷 Ouvrir caméra',camClose:'📷 Fermer caméra',
+    qrStatus:'ou sélectionner ci-dessous',qrScanning:'Recherche du QR code...',
+    al:[{id:'gluten',l:'Gluten',e:'🌾'},{id:'laktoz',l:'Lactose',e:'🥛'},{id:'yumurta',l:'Œufs',e:'🥚'},{id:'fistik',l:'Arachides',e:'🥜'},{id:'susam',l:'Sésame',e:'🌰'},{id:'soya',l:'Soja',e:'🫘'}]},
+  ja:{flag:'🇯🇵',name:'日本語',native:'日本語',
+    lblScan:'📷 QRスキャン',lblAl:'🛡️ アレルゲンフィルター',lblProd:'製品を選ぶ',
+    tabScan:'スキャン',tabList:'リスト',tabCoach:'AIコーチ',tabProfile:'プロフィール',
+    listTitle:'買い物リスト',listSub:'アレルゲン別の安全製品',
+    coachTitle:'AI食品コーチ',coachSub:'食品工学サポート',
+    profileTitle:'マイプロフィール',authBtn:'ログイン',authBtnOut:'ログアウト',
+    loginTitle:'ログイン',loginSub:'おかえりなさい',
+    regTitle:'アカウント作成',regSub:'TraceEatへようこそ',
+    lblEmail:'メール',lblPass:'パスワード',lblName:'氏名',
+    saveAl:'保存',myAl:'私のアレルゲン',
+    bannerD:'⚠️ アレルゲン警告：',bannerC:'を含む',
+    bannerS:'✓ あなたのアレルゲンは',bannerSE:'この製品に含まれていません',
+    tabJ:'トレース',tabI:'成分',tabN:'栄養',tabH:'健康',
+    tagSafe:'✓ 安全',tagCaution:'注意',tagWarn:'⚠ 警告',
+    coachWait:'製品選択を待っています',coachReady:'準備完了',coachThink:'分析中...',
+    coachEmptyT:'上の製品を選んでください',coachEmptyS:'栄養と健康効果について質問する',
+    addToList:'+ 追加',listEmpty:'アイテムなし',
+    langTitle:'言語を選択',closeBtn:'閉じる',
+    lstInputPh:'製品を追加...',camBtn:'📷 カメラを開く',camClose:'📷 カメラを閉じる',
+    qrStatus:'または下から製品を選択',qrScanning:'QRコードを検索中...',
+    al:[{id:'gluten',l:'グルテン',e:'🌾'},{id:'laktoz',l:'乳糖',e:'🥛'},{id:'yumurta',l:'卵',e:'🥚'},{id:'fistik',l:'ピーナッツ',e:'🥜'},{id:'susam',l:'ごま',e:'🌰'},{id:'soya',l:'大豆',e:'🫘'}]},
+  zh:{flag:'🇨🇳',name:'中文',native:'中文',
+    lblScan:'📷 扫描QR',lblAl:'🛡️ 我的过敏原筛选',lblProd:'选择产品',
+    tabScan:'扫描',tabList:'列表',tabCoach:'AI教练',tabProfile:'个人资料',
+    listTitle:'购物清单',listSub:'按过敏原筛选的安全产品',
+    coachTitle:'AI食品教练',coachSub:'食品工程支持',
+    profileTitle:'我的资料',authBtn:'登录',authBtnOut:'退出',
+    loginTitle:'登录',loginSub:'欢迎回来',
+    regTitle:'创建账户',regSub:'加入TraceEat',
+    lblEmail:'电子邮件',lblPass:'密码',lblName:'全名',
+    saveAl:'保存',myAl:'我的过敏原',
+    bannerD:'⚠️ 过敏原警告：',bannerC:'含有',
+    bannerS:'✓ 您的过敏原',bannerSE:'在本产品中未检出',
+    tabJ:'溯源',tabI:'成分',tabN:'营养',tabH:'健康',
+    tagSafe:'✓ 安全',tagCaution:'注意',tagWarn:'⚠ 警告',
+    coachWait:'等待产品选择',coachReady:'准备好了',coachThink:'分析中...',
+    coachEmptyT:'请在上方选择产品',coachEmptyS:'询问营养和健康影响',
+    addToList:'+ 添加',listEmpty:'暂无商品',
+    langTitle:'选择语言',closeBtn:'关闭',
+    lstInputPh:'添加产品...',camBtn:'📷 打开摄像头',camClose:'📷 关闭摄像头',
+    qrStatus:'或在下方选择产品',qrScanning:'正在搜索QR码...',
+    al:[{id:'gluten',l:'麸质',e:'🌾'},{id:'laktoz',l:'乳糖',e:'🥛'},{id:'yumurta',l:'鸡蛋',e:'🥚'},{id:'fistik',l:'花生',e:'🥜'},{id:'susam',l:'芝麻',e:'🌰'},{id:'soya',l:'大豆',e:'🫘'}]},
+};
+
+// ═══ STATE ═══
+let lang = localStorage.getItem('te-lang') || 'tr';
+let activeAl = new Set(JSON.parse(localStorage.getItem('te-al') || '[]'));
+let currentProd = null, products = [], coachProd = null;
+let chatHistory = [], aiLoading = false;
+let listItems = JSON.parse(localStorage.getItem('te-list') || '[]');
+let currentUser = null;
+let camActive = false, camStream = null, scanInterval = null;
+
+// ═══ INIT ═══
+async function init() {
+  applyLang();
+  renderAlChips();
+  renderProfileAlChips();
+  await loadProducts();
+  checkCookies();
+  checkAuth();
+  SB.auth.onAuthStateChange((event, session) => {
+    currentUser = session?.user || null;
+    updateAuthUI();
+    if(currentUser) syncAllergens();
+  });
+}
+
+// ═══ AUTH ═══
+async function checkAuth() {
+  const { data: { session } } = await SB.auth.getSession();
+  currentUser = session?.user || null;
+  updateAuthUI();
+}
+
+function updateAuthUI() {
+  const t = LANGS[lang];
+  const authBtn = document.getElementById('auth-btn');
+  const authSection = document.getElementById('auth-section');
+  const profileSection = document.getElementById('profile-section');
+  if(currentUser) {
+    authBtn.textContent = t.authBtnOut;
+    authSection.style.display = 'none';
+    profileSection.style.display = 'block';
+    document.getElementById('profile-name').textContent = currentUser.user_metadata?.full_name || currentUser.email;
+    document.getElementById('profile-email').textContent = currentUser.email;
+    document.getElementById('profile-avatar').textContent = (currentUser.user_metadata?.full_name || currentUser.email)[0].toUpperCase();
+    loadScanHistory();
+  } else {
+    authBtn.textContent = t.authBtn;
+    authSection.style.display = 'block';
+    profileSection.style.display = 'none';
+  }
+}
+
+function handleAuthBtn() {
+  if(currentUser) { signOut(); } 
+  else { showTab('profile', document.getElementById('tab-profile')); }
+}
+
+async function signIn() {
+  const email = document.getElementById('login-email').value.trim();
+  const pass = document.getElementById('login-pass').value;
+  if(!email || !pass) return showAuthMsg('E-posta ve şifre gerekli', 'error');
+  const btn = document.getElementById('login-btn');
+  btn.disabled = true; btn.textContent = '...';
+  const { error } = await SB.auth.signInWithPassword({ email, password: pass });
+  btn.disabled = false; btn.textContent = LANGS[lang].loginTitle;
+  if(error) showAuthMsg(error.message, 'error');
+  else { showAuthMsg('Giriş başarılı!', 'success'); showToast('✓ Hoş geldin!'); }
+}
+
+async function signUp() {
+  const name = document.getElementById('reg-name').value.trim();
+  const email = document.getElementById('reg-email').value.trim();
+  const pass = document.getElementById('reg-pass').value;
+  if(!name || !email || !pass) return showAuthMsg('Tüm alanları doldur', 'error');
+  if(pass.length < 6) return showAuthMsg('Şifre en az 6 karakter olmalı', 'error');
+  const btn = document.getElementById('reg-btn');
+  btn.disabled = true; btn.textContent = '...';
+  const { error } = await SB.auth.signUp({ email, password: pass, options: { data: { full_name: name } } });
+  btn.disabled = false; btn.textContent = LANGS[lang].regTitle;
+  if(error) showAuthMsg(error.message, 'error');
+  else showAuthMsg('Kayıt başarılı! E-postanı doğrula.', 'success');
+}
+
+async function signOut() {
+  await SB.auth.signOut();
+  currentUser = null;
+  updateAuthUI();
+  showToast('Çıkış yapıldı');
+}
+
+function showAuthMsg(msg, type) {
+  const el = document.getElementById('auth-msg');
+  el.textContent = msg; el.className = `auth-msg ${type}`;
+}
+
+function showLogin() { document.getElementById('login-form').style.display='block'; document.getElementById('register-form').style.display='none'; }
+function showRegister() { document.getElementById('login-form').style.display='none'; document.getElementById('register-form').style.display='block'; }
+
+async function syncAllergens() {
+  if(!currentUser) return;
+  const { data } = await SB.from('profiles').select('allergens').eq('id', currentUser.id).single();
+  if(data?.allergens?.length) {
+    activeAl = new Set(data.allergens);
+    localStorage.setItem('te-al', JSON.stringify([...activeAl]));
+    renderAlChips(); renderProfileAlChips(); renderPchips();
+  }
+}
+
+async function saveAllergens() {
+  if(!currentUser) return showToast('Önce giriş yap');
+  const als = [...activeAl];
+  await SB.from('profiles').update({ allergens: als }).eq('id', currentUser.id);
+  localStorage.setItem('te-al', JSON.stringify(als));
+  showToast('✓ Alerjenler kaydedildi');
+}
+
+async function loadScanHistory() {
+  if(!currentUser) return;
+  const { data } = await SB.from('scan_history').select('*, products(name_tr, name_en)').eq('user_id', currentUser.id).order('scanned_at', { ascending: false }).limit(5);
+  const el = document.getElementById('scan-history-list');
+  if(!data?.length) { el.innerHTML = '<div style="font-size:13px;color:var(--ink3)">Henüz tarama yok</div>'; return; }
+  el.innerHTML = data.map(s => {
+    const nm = s.products?.['name_'+lang] || s.products?.name_tr || '-';
+    const dt = new Date(s.scanned_at).toLocaleDateString(lang);
+    return `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px"><span>${nm}</span><span style="color:var(--ink3)">${dt}</span></div>`;
+  }).join('');
+}
+
+async function recordScan(productId) {
+  if(!currentUser) return;
+  await SB.from('scan_history').insert({ user_id: currentUser.id, product_id: productId, language: lang, device_type: /Mobile/.test(navigator.userAgent) ? 'mobile' : 'desktop' });
+}
+
+// ═══ ÜRÜNLER ═══
+async function loadProducts() {
+  try {
+    const { data, error } = await SB.from('products').select('*').eq('active', true);
+    if(error) throw error;
+    products = data || [];
+    renderPchips();
+    if(products.length) loadProd(products[0].id);
+  } catch(e) {
+    document.getElementById('pchips').innerHTML = '<div style="font-size:12px;color:var(--ink3)">Ürünler yüklenemedi</div>';
+  }
+}
+
+function getProductName(p) {
+  return p['name_'+lang] || p.name_tr || p.name_en || '-';
+}
+
+function renderPchips() {
+  const el = document.getElementById('pchips');
+  if(!products.length) return;
+  el.innerHTML = products.map(p => {
+    const w = activeAl.size > 0 && p.allergens?.some(a => activeAl.has(a));
+    return `<div class="pchip${currentProd?.id===p.id?' sel':''}${w?' hw':''}" onclick="loadProd('${p.id}')">
+      ${getCategoryEmoji(p.category)} ${getProductName(p).split(' ').slice(0,2).join(' ')}
+      <span class="wdot"></span>
+    </div>`;
+  }).join('');
+}
+
+function getCategoryEmoji(cat) {
+  const map = {yag:'🫙',sut:'🥛',biskuvi:'🍪',et:'🥩',sebze:'🥦',meyve:'🍎'};
+  return map[cat] || '🏷️';
+}
+
+async function loadProd(id) {
+  const p = products.find(x => x.id === id);
+  if(!p) return;
+  currentProd = p;
+  const t = LANGS[lang];
+  renderPchips();
+  recordScan(id);
+
+  // Header
+  const colors = {A:'linear-gradient(135deg,#0f3d22,#1a6b3c)',B:'linear-gradient(135deg,#0c3b6e,#1565c0)',C:'linear-gradient(135deg,#7a3800,#b85c00)',D:'linear-gradient(135deg,#5d1010,#c0392b)'};
+  const sc = (p.health_score||'C')[0];
+  document.getElementById('pcard-hd').style.background = colors[sc] || colors.C;
+  document.getElementById('pc-em').textContent = getCategoryEmoji(p.category);
+  document.getElementById('pc-nm').textContent = getProductName(p);
+  document.getElementById('pc-br').textContent = `${p.brand || ''} · ${p.barcode || ''}`;
+  document.getElementById('pc-sc').textContent = p.health_score || '-';
+
+  // QI satırı
+  document.getElementById('pc-qi').innerHTML = [
+    {v: p.health_score||'-', l:'Skor'},
+    {v: p.allergens?.length ? p.allergens.length+'x' : '✓', l: t.al[0]?.l || 'Alerjen'},
+    {v: p.shelf_life_days ? p.shelf_life_days+'g' : '-', l:'Raf Ömrü'}
+  ].map(q => `<div><div class="qi-v">${q.v}</div><div class="qi-l">${q.l}</div></div>`).join('');
+
+  // Banner
+  const banner = document.getElementById('banner');
+  if(activeAl.size > 0) {
+    const hits = (p.allergens||[]).filter(a => activeAl.has(a));
+    const alList = LANGS[lang].al;
+    if(hits.length) {
+      const names = hits.map(id => { const f = alList.find(x=>x.id===id); return f ? f.e+' '+f.l : id; }).join(', ');
+      banner.className = 'banner show danger';
+      banner.innerHTML = `${t.bannerD} <strong>${names}</strong> ${t.bannerC}`;
+    } else {
+      banner.className = 'banner show safe';
+      banner.innerHTML = `${t.bannerS} <strong>${t.bannerSE}</strong>`;
+    }
+  } else banner.className = 'banner';
+
+  // İç tab başlıkları
+  document.getElementById('itabs').innerHTML = [['j',t.tabJ],['i',t.tabI],['n',t.tabN],['h',t.tabH]].map(([id,lbl],i) =>
+    `<button class="itab${i===0?' active':''}" onclick="iTab('${id}',this)">${lbl}</button>`
+  ).join('');
+
+  // Veri yükle
+  await Promise.all([loadJourney(id, t), loadIngredients(id, t), loadNutrition(id, t), loadHealth(id, t)]);
+
+  document.getElementById('pcard').className = 'pcard show';
+  iTab('j', null);
+  document.getElementById('pcard').scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+
+async function loadJourney(id, t) {
+  const { data } = await SB.from('journey_steps').select('*').eq('product_id', id).order('sort_order');
+  const { data: prod } = await SB.from('products').select('certifications').eq('id', id).single();
+  
+  if(!data?.length) {
+    document.getElementById('j-steps').innerHTML = `<div style="font-size:12px;color:var(--ink3);padding:8px">Yolculuk bilgisi henüz eklenmedi</div>`;
+    return;
+  }
+  document.getElementById('j-steps').innerHTML = data.map(s => `
+    <div class="jstep">
+      <div class="jdot ${s.step_type}">${s.icon||'📍'}</div>
+      <div class="jinfo">
+        <div class="jnm">${s['name_'+lang]||s.name_tr}</div>
+        <div class="jdt">${s['detail_'+lang]||s.detail_tr||''}</div>
+        <div class="jd">${s.step_date||''}</div>
+        ${s.certification?`<span class="jcert">✓ ${s.certification}</span>`:''}
+      </div>
+    </div>`).join('');
+  
+  const certs = prod?.certifications || [];
+  document.getElementById('j-certs').innerHTML = certs.map(c => `<div class="cert">✓ ${c}</div>`).join('');
+}
+
+async function loadIngredients(id, t) {
+  const { data } = await SB.from('ingredients').select('*').eq('product_id', id).order('sort_order');
+  if(!data?.length) { document.getElementById('ing-c').innerHTML = `<div style="font-size:12px;color:var(--ink3);padding:8px;grid-column:1/-1">Bileşen bilgisi henüz eklenmedi</div>`; return; }
+  document.getElementById('ing-c').innerHTML = data.map(ing => {
+    const hit = ing.allergens?.some(a => activeAl.has(a));
+    const alList = LANGS[lang].al;
+    const pills = (ing.allergens||[]).filter(a => activeAl.has(a)).map(a => { const f = alList.find(x=>x.id===a); return f?`<span class="apill">⚠ ${f.l}</span>`:''; }).join('');
+    const tl = ing.safety_level==='safe'?t.tagSafe:ing.safety_level==='caution'?t.tagCaution:t.tagWarn;
+    return `<div class="ing-item${hit?' ahi':''}">
+      <div class="ing-nm">${ing['name_'+lang]||ing.name_tr}</div>
+      <div class="ing-a">${ing.amount||''}</div>
+      <span class="itag ${ing.safety_level||'safe'}">${tl}</span>${pills}
+    </div>`;
+  }).join('');
+}
+
+async function loadNutrition(id, t) {
+  const { data } = await SB.from('nutrition_facts').select('*').eq('product_id', id).order('sort_order');
+  if(!data?.length) { document.getElementById('nut-c').innerHTML = `<div style="font-size:12px;color:var(--ink3)">Besin değeri henüz eklenmedi</div>`; return; }
+  document.getElementById('nut-c').innerHTML = data.map(n => `
+    <div class="nut-row">
+      <span class="nut-l">${n['label_'+lang]||n.label_tr}</span>
+      <div class="nut-bg"><div class="nut-f" style="width:${n.percentage||0}%;background:${n.color||'#2d9e5f'}"></div></div>
+      <span class="nut-v">${n.value}</span>
+    </div>`).join('');
+}
+
+async function loadHealth(id, t) {
+  const { data: alerts } = await SB.from('health_alerts').select('*').eq('product_id', id).order('sort_order');
+  const p = products.find(x => x.id === id);
+  const sc = p?.health_score || 'C';
+  const clsMap = {'A+':'ra','A':'ra','B+':'rb','B':'rb','C+':'rc','C':'rc','D':'rc'};
+  const titleMap = {
+    tr:{'A+':'Mükemmel','A':'Çok İyi','B+':'İyi','B':'Orta İyi','C+':'Orta','C':'Orta','D':'Zayıf'},
+    en:{'A+':'Excellent','A':'Very Good','B+':'Good','B':'Fair','C+':'Average','C':'Average','D':'Poor'},
+    de:{'A+':'Ausgezeichnet','A':'Sehr Gut','B+':'Gut','B':'Befriedigend','C+':'Durchschnitt','C':'Durchschnitt','D':'Schwach'},
+    fr:{'A+':'Excellent','A':'Très Bien','B+':'Bien','B':'Assez Bien','C+':'Moyen','C':'Moyen','D':'Faible'},
+    ja:{'A+':'優秀','A':'非常に良い','B+':'良い','B':'まあまあ','C+':'普通','C':'普通','D':'弱い'},
+    zh:{'A+':'优秀','A':'非常好','B+':'良好','B':'一般良','C+':'一般','C':'一般','D':'差'},
+  };
+  const hr = document.getElementById('h-ring');
+  hr.textContent = sc; hr.className = `h-ring ${clsMap[sc]||'rc'}`;
+  document.getElementById('h-ttl').textContent = (titleMap[lang]||titleMap.tr)[sc] || sc;
+  document.getElementById('h-dsc').textContent = '';
+  document.getElementById('h-alerts').innerHTML = (alerts||[]).map(a => `
+    <div class="alert ${a.alert_type}">
+      <span>${a.alert_type==='ok'?'✓':a.alert_type==='info'?'ℹ':'⚠'}</span>
+      <span>${a['text_'+lang]||a.text_tr}</span>
+    </div>`).join('') || '<div style="font-size:12px;color:var(--ink3)">Sağlık notu henüz eklenmedi</div>';
+}
+
+function iTab(id, btn) {
+  document.querySelectorAll('.isec').forEach(x => x.classList.remove('active'));
+  document.querySelectorAll('.itab').forEach(x => x.classList.remove('active'));
+  document.getElementById('isec-'+id).classList.add('active');
+  if(btn) btn.classList.add('active');
+  else document.querySelector(`.itab[onclick*="'${id}'"]`)?.classList.add('active');
+}
+
+// ═══ QR SCANNER ═══
+async function toggleCamera() {
+  const btn = document.getElementById('cam-btn');
+  const wrap = document.getElementById('qr-wrap');
+  const t = LANGS[lang];
+  if(!camActive) {
+    try {
+      camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      const video = document.getElementById('qr-video');
+      video.srcObject = camStream;
+      wrap.style.display = 'block';
+      btn.textContent = t.camClose;
+      document.getElementById('qr-status').textContent = t.qrScanning;
+      camActive = true;
+      scanInterval = setInterval(() => scanQR(video), 300);
+    } catch(e) {
+      showToast('Kamera erişimi reddedildi');
+    }
+  } else {
+    stopCamera();
+    btn.textContent = t.camBtn;
+    wrap.style.display = 'none';
+    document.getElementById('qr-status').textContent = t.qrStatus;
+  }
+}
+
+function stopCamera() {
+  if(camStream) { camStream.getTracks().forEach(t => t.stop()); camStream = null; }
+  if(scanInterval) { clearInterval(scanInterval); scanInterval = null; }
+  camActive = false;
+}
+
+function scanQR(video) {
+  if(video.readyState !== video.HAVE_ENOUGH_DATA) return;
+  const canvas = document.createElement('canvas');
+  canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0);
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const code = jsQR(imageData.data, imageData.width, imageData.height);
+  if(code) {
+    stopCamera();
+    document.getElementById('cam-btn').textContent = LANGS[lang].camBtn;
+    document.getElementById('qr-wrap').style.display = 'none';
+    document.getElementById('qr-status').textContent = LANGS[lang].qrStatus;
+    handleQRResult(code.data);
+  }
+}
+
+function handleQRResult(data) {
+  const prod = products.find(p => p.qr_lot === data || p.barcode === data || p.id === data);
+  if(prod) { loadProd(prod.id); showToast('✓ Ürün bulundu!'); }
+  else { showToast('Ürün bulunamadı: ' + data.substring(0,20)); }
+}
+
+// ═══ ALIŞVERİŞ LİSTESİ ═══
+function renderList() {
+  const t = LANGS[lang];
+  const el = document.getElementById('list-items');
+  if(!listItems.length) { el.innerHTML = `<div style="padding:20px;text-align:center;color:var(--ink3);font-size:13px">${t.listEmpty}</div>`; return; }
+  el.innerHTML = listItems.map(item => {
+    const danger = activeAl.size > 0 && item.allergens?.some(a => activeAl.has(a));
+    return `<div class="list-item${item.done?' checked':''}${danger?' danger-bg':''}">
+      <div class="list-check${item.done?' done':''}" onclick="toggleItem(${item.id})">${item.done?'✓':''}</div>
+      <div style="flex:1">
+        <div class="list-item-nm" style="${item.done?'text-decoration:line-through':''}">${item.name}</div>
+        <div class="list-item-sub">${item.sub||''}${danger?' · <span style="color:var(--r);font-weight:500">⚠ Alerjen!</span>':''}</div>
+      </div>
+      <button class="list-del" onclick="delItem(${item.id})">✕</button>
+    </div>`;
+  }).join('');
+}
+
+function addListItem() {
+  const input = document.getElementById('lst-input');
+  const v = input.value.trim(); if(!v) return;
+  const match = products.find(p => getProductName(p).toLowerCase().includes(v.toLowerCase()));
+  listItems.push({ id: Date.now(), name: v, sub: match ? getProductName(match) : '', allergens: match?.allergens||[], done: false });
+  input.value = '';
+  localStorage.setItem('te-list', JSON.stringify(listItems));
+  renderList();
+}
+
+function toggleItem(id) { const i = listItems.find(x=>x.id===id); if(i){i.done=!i.done;localStorage.setItem('te-list',JSON.stringify(listItems));renderList();} }
+function delItem(id) { listItems=listItems.filter(x=>x.id!==id); localStorage.setItem('te-list',JSON.stringify(listItems)); renderList(); }
+
+// ═══ AI KOÇ ═══
+function initCoach() {
+  const t = LANGS[lang];
+  document.getElementById('coach-prods').innerHTML = products.map(p =>
+    `<div style="padding:6px 12px;border-radius:16px;font-size:11px;font-weight:500;cursor:pointer;border:1px solid var(--border);background:var(--paper);color:var(--ink2);transition:all .15s;min-height:32px;display:flex;align-items:center" id="cp-${p.id}" onclick="setCoachProd('${p.id}')">${getCategoryEmoji(p.category)} ${getProductName(p).split(' ').slice(0,2).join(' ')}</div>`
+  ).join('');
+}
+
+function setCoachProd(id) {
+  coachProd = products.find(p => p.id === id);
+  chatHistory = [];
+  document.querySelectorAll('[id^="cp-"]').forEach(el => el.style.background = '');
+  const el = document.getElementById('cp-'+id);
+  if(el) el.style.background = 'var(--gl)';
+  document.getElementById('send-btn').disabled = false;
+  document.getElementById('coach-st').textContent = LANGS[lang].coachReady;
+  const chat = document.getElementById('chat');
+  chat.innerHTML = '';
+  appendAI(`${getCategoryEmoji(coachProd.category)} <strong>${getProductName(coachProd)}</strong> hakkında sorularını bekliyorum 🌿`);
+  const qqs = ['Bu ürün sağlıklı mı?', 'Günde ne kadar tüketebilirim?', 'Hangi besin değerleri öne çıkıyor?', 'Çocuklar için uygun mu?'];
+  const qr = document.getElementById('qq-row');
+  qr.style.display = 'flex';
+  qr.innerHTML = qqs.map(q => `<button style="padding:5px 10px;border-radius:16px;font-size:11px;cursor:pointer;border:1px solid var(--border);background:var(--paper);color:var(--ink2);font-family:'DM Sans',sans-serif" onclick="document.getElementById('ci').value='${q}';sendCoach()">${q}</button>`).join('');
+}
+
+function appendAI(html) {
+  const chat = document.getElementById('chat');
+  const div = document.createElement('div'); div.className = 'msg ai';
+  div.innerHTML = `<div class="m-av">🌿</div><div class="bubble">${html}</div>`;
+  chat.appendChild(div); chat.scrollTop = chat.scrollHeight;
+}
+
+function appendUser(text) {
+  const chat = document.getElementById('chat');
+  const div = document.createElement('div'); div.className = 'msg user';
+  div.innerHTML = `<div class="m-av">👤</div><div class="bubble">${text}</div>`;
+  chat.appendChild(div); chat.scrollTop = chat.scrollHeight;
+}
+
+async function sendCoach() {
+  if(aiLoading || !coachProd) return;
+  const ci = document.getElementById('ci');
+  const text = ci.value.trim(); if(!text) return;
+  ci.value = ''; ci.style.height = 'auto';
+  aiLoading = true;
+  document.getElementById('send-btn').disabled = true;
+  document.getElementById('coach-st').textContent = LANGS[lang].coachThink;
+  appendUser(text);
+  chatHistory.push({ role: 'user', content: text });
+  const typing = document.createElement('div'); typing.className='msg ai'; typing.id='typing';
+  typing.innerHTML=`<div class="m-av">🌿</div><div class="bubble" style="display:flex;gap:4px;align-items:center"><div class="td"></div><div class="td"></div><div class="td"></div></div>`;
+  document.getElementById('chat').appendChild(typing);
+  document.getElementById('chat').scrollTop = 99999;
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514', max_tokens: 800,
+        system: `Sen TraceEat uygulamasının AI Gıda Koçusun. Gıda mühendisliği ve güvenliği konusunda uzman bir danışmansın. Şu an incelenen ürün: ${getProductName(coachProd)}, Marka: ${coachProd.brand||'-'}, Sağlık skoru: ${coachProd.health_score||'-'}, Alerjenler: ${(coachProd.allergens||[]).join(', ')||'yok'}. Kullanıcının dilinde (${lang}) yanıtla. Kısa, net, bilimsel ama anlaşılır ol. Max 3 paragraf.`,
+        messages: chatHistory
+      })
+    });
+    const data = await r.json();
+    const reply = data.content?.[0]?.text || 'Bir hata oluştu.';
+    chatHistory.push({ role: 'assistant', content: reply });
+    document.getElementById('typing')?.remove();
+    appendAI(reply.replace(/\n\n/g,'<br><br>').replace(/\n/g,'<br>').replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>'));
+    document.getElementById('coach-st').textContent = LANGS[lang].coachReady;
+  } catch(e) {
+    document.getElementById('typing')?.remove();
+    appendAI('Bağlantı hatası. Tekrar dene.');
+  }
+  aiLoading = false;
+  document.getElementById('send-btn').disabled = false;
+}
+
+// ═══ DİL ═══
+function applyLang() {
+  const t = LANGS[lang];
+  document.getElementById('lang-btn').textContent = t.flag+' '+Object.keys(LANGS).find(k=>LANGS[k]===t)?.toUpperCase();
+  document.getElementById('auth-btn').textContent = currentUser ? t.authBtnOut : t.authBtn;
+  document.getElementById('lbl-scan').textContent = t.lblScan;
+  document.getElementById('lbl-al').textContent = t.lblAl;
+  document.getElementById('lbl-prod').textContent = t.lblProd;
+  document.getElementById('tab-lbl-scan').textContent = t.tabScan;
+  document.getElementById('tab-lbl-list').textContent = t.tabList;
+  document.getElementById('tab-lbl-coach').textContent = t.tabCoach;
+  document.getElementById('tab-lbl-profile').textContent = t.tabProfile;
+  document.getElementById('list-title').textContent = t.listTitle;
+  document.getElementById('list-sub').textContent = t.listSub;
+  document.getElementById('coach-title').textContent = t.coachTitle;
+  document.getElementById('coach-sub').textContent = t.coachSub;
+  document.getElementById('profile-title').textContent = t.profileTitle;
+  document.getElementById('login-title').textContent = t.loginTitle;
+  document.getElementById('login-sub').textContent = t.loginSub;
+  document.getElementById('login-btn').textContent = t.loginTitle;
+  document.getElementById('reg-title').textContent = t.regTitle;
+  document.getElementById('reg-sub').textContent = t.regSub;
+  document.getElementById('reg-btn').textContent = t.regTitle;
+  document.getElementById('lbl-email').textContent = t.lblEmail;
+  document.getElementById('lbl-pass').textContent = t.lblPass;
+  document.getElementById('lbl-name').textContent = t.lblName;
+  document.getElementById('save-al-btn').textContent = t.saveAl;
+  document.getElementById('lbl-my-al').textContent = t.myAl;
+  document.getElementById('lst-input').placeholder = t.lstInputPh;
+  document.getElementById('lst-add-btn').textContent = t.addToList;
+  document.getElementById('cam-btn').textContent = camActive ? t.camClose : t.camBtn;
+  document.getElementById('qr-status').textContent = camActive ? t.qrScanning : t.qrStatus;
+  document.getElementById('coach-empty-title').textContent = t.coachEmptyT;
+  document.getElementById('coach-empty-sub').textContent = t.coachEmptyS;
+  document.getElementById('lang-modal-title').textContent = t.langTitle;
+  document.getElementById('modal-close-btn').textContent = t.closeBtn;
+  renderAlChips(); renderProfileAlChips();
+  if(currentProd) loadProd(currentProd.id);
+  renderList();
+}
+
+function openLangModal() {
+  const el = document.getElementById('lang-options');
+  el.innerHTML = Object.entries(LANGS).map(([k,v]) =>
+    `<div class="lang-option${lang===k?' sel':''}" onclick="setLang('${k}')">
+      <span class="lang-flag-big">${v.flag}</span>
+      <div><div class="lang-nm">${v.name}</div><div class="lang-native">${v.native}</div></div>
+    </div>`
+  ).join('');
+  document.getElementById('lang-modal').classList.add('show');
+}
+
+function closeLangModal() { document.getElementById('lang-modal').classList.remove('show'); }
+
+function setLang(l) {
+  lang = l;
+  localStorage.setItem('te-lang', l);
+  closeLangModal();
+  applyLang();
+  renderPchips();
+  initCoach();
+}
+
+// ═══ ALERJEN CHİPS ═══
+function renderAlChips() {
+  const t = LANGS[lang];
+  document.getElementById('al-chips').innerHTML = t.al.map(a =>
+    `<div class="alc${activeAl.has(a.id)?' on':''}" onclick="toggleAl('${a.id}')">${a.e} ${a.l}</div>`
+  ).join('');
+}
+
+function renderProfileAlChips() {
+  const t = LANGS[lang];
+  const el = document.getElementById('profile-al-chips');
+  if(!el) return;
+  el.innerHTML = t.al.map(a =>
+    `<div class="alc${activeAl.has(a.id)?' on':''}" onclick="toggleAlProfile('${a.id}')">${a.e} ${a.l}</div>`
+  ).join('');
+}
+
+function toggleAl(id) {
+  activeAl.has(id) ? activeAl.delete(id) : activeAl.add(id);
+  localStorage.setItem('te-al', JSON.stringify([...activeAl]));
+  renderAlChips(); renderProfileAlChips(); renderPchips();
+  if(currentProd) loadProd(currentProd.id);
+}
+
+function toggleAlProfile(id) {
+  activeAl.has(id) ? activeAl.delete(id) : activeAl.add(id);
+  localStorage.setItem('te-al', JSON.stringify([...activeAl]));
+  renderAlChips(); renderProfileAlChips(); renderPchips();
+  if(currentProd) loadProd(currentProd.id);
+}
+
+// ═══ TABS ═══
+function showTab(id, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+  document.getElementById('page-'+id).classList.add('active');
+  btn.classList.add('active');
+  if(id === 'coach') initCoach();
+  if(id === 'list') renderList();
+  if(!camActive && id !== 'scan') {} // kamerayı sadece scan tab'ında aç
+  if(id !== 'scan' && camActive) stopCamera();
+}
+
+// ═══ KVKK ═══
+function checkCookies() {
+  if(!localStorage.getItem('te-cookies')) document.getElementById('kvkk-bar').classList.add('show');
+}
+function acceptCookies() {
+  localStorage.setItem('te-cookies', '1');
+  document.getElementById('kvkk-bar').classList.remove('show');
+}
+function showPrivacy() {
+  showToast('Gizlilik politikası yakında eklenecek');
+}
+
+// ═══ TOAST ═══
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ═══ BOOT ═══
+init();
+</script>
+</body>
+</html>

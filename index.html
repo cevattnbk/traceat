@@ -290,7 +290,8 @@ body{font-family:'DM Sans',sans-serif;background:var(--paper);color:var(--ink);d
         </div>
       </div>
       <button onclick="toggleCamera()" id="cam-btn" style="width:100%;padding:12px;background:var(--g);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;margin-bottom:10px">📷 Kamerayı Aç</button>
-      <div class="qr-status" id="qr-status">veya aşağıdan ürün seç</div>
+      <div class="qr-status" id="qr-status">veya barkod / ürün adı ara</div>
+      <div style="display:flex;gap:8px;margin-top:8px"><input id="search-input" style="flex:1;padding:9px 12px;border:1px solid var(--border);border-radius:10px;font-size:13px;font-family:DM Sans,sans-serif;background:var(--soft);color:var(--ink);outline:none" placeholder="Barkod veya ürün adı..." onkeydown="if(event.key===Enter)doSearch()"><button onclick="doSearch()" style="padding:9px 14px;background:var(--g);color:#fff;border:none;border-radius:10px;font-size:13px;cursor:pointer">🔍</button></div>
     </div>
 
     <!-- Alerjen Filtre -->
@@ -632,6 +633,13 @@ let currentUser = null;
 let camActive = false, camStream = null, scanInterval = null;
 
 // ═══ INIT ═══
+function doSearch() {
+  const q = document.getElementById("search-input")?.value?.trim();
+  if(!q) return;
+  if(/^\d+$/.test(q)) handleQRResult(q);
+  else searchByName(q);
+}
+
 async function init() {
   applyLang();
   renderAlChips();
@@ -971,10 +979,191 @@ function scanQR(video) {
   }
 }
 
-function handleQRResult(data) {
-  const prod = products.find(p => p.qr_lot === data || p.barcode === data || p.id === data);
-  if(prod) { loadProd(prod.id); showToast('✓ Ürün bulundu!'); }
-  else { showToast('Ürün bulunamadı: ' + data.substring(0,20)); }
+async function handleQRResult(data) {
+  stopCamera();
+  document.getElementById('cam-btn').textContent = LANGS[lang].camBtn;
+  document.getElementById('qr-wrap').style.display = 'none';
+
+  // Önce kendi DB'de ara
+  const localProd = products.find(p => p.qr_lot === data || p.barcode === data || p.id === data);
+  if(localProd) { loadProd(localProd.id); showToast('✓ Ürün bulundu!'); return; }
+
+  // Yoksa Open Food Facts'te ara
+  showToast('🔍 Open Food Facts\'te aranıyor...');
+  await searchOpenFoodFacts(data);
+}
+
+async function searchOpenFoodFacts(barcode) {
+  try {
+    const r = await fetch(`https://world.openfoodfacts.org/api/v2/product/${barcode}.json`);
+    const data = await r.json();
+    if(data.status !== 1 || !data.product) {
+      showToast('❌ Ürün bulunamadı');
+      document.getElementById('qr-status').textContent = LANGS[lang].qrStatus;
+      return;
+    }
+    showOFFProduct(data.product, barcode);
+  } catch(e) {
+    showToast('Bağlantı hatası');
+  }
+}
+
+async function searchByName(query) {
+  if(!query.trim()) return;
+  showToast('🔍 Aranıyor...');
+  try {
+    const r = await fetch(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=5&lc=${lang}`);
+    const data = await r.json();
+    if(!data.products?.length) { showToast('Ürün bulunamadı'); return; }
+    showOFFProduct(data.products[0], data.products[0].code);
+  } catch(e) {
+    showToast('Bağlantı hatası');
+  }
+}
+
+async function showOFFProduct(p, barcode) {
+  const t = LANGS[lang];
+  // Sağlık skoru dönüşümü
+  const gradeMap = {a:'A+', b:'B+', c:'C', d:'D', e:'F'};
+  const grade = gradeMap[p.nutriscore_grade] || 'C';
+  const gradeColor = {A:'linear-gradient(135deg,#0f3d22,#1a6b3c)',B:'linear-gradient(135deg,#0c3b6e,#1565c0)',C:'linear-gradient(135deg,#7a3800,#b85c00)',D:'linear-gradient(135deg,#5d1010,#c0392b)',F:'linear-gradient(135deg,#5d1010,#c0392b)'};
+  const sc = (grade)[0];
+
+  // Alerjen tespiti
+  const offAllergens = [];
+  const alMap = {en_gluten:['gluten'],en_milk:['laktoz'],en_eggs:['yumurta'],en_peanuts:['fistik'],en_sesame_seeds:['susam'],en_soybeans:['soya']};
+  (p.allergens_tags||[]).forEach(tag => { if(alMap[tag]) offAllergens.push(...alMap[tag]); });
+
+  // Başlık
+  const name = p.product_name || p.product_name_en || p.product_name_tr || 'Bilinmeyen Ürün';
+  const brand = p.brands || '-';
+  document.getElementById('pcard-hd').style.background = gradeColor[sc] || gradeColor.C;
+  document.getElementById('pc-em').textContent = '🏷️';
+  document.getElementById('pc-nm').textContent = name;
+  document.getElementById('pc-br').textContent = `${brand} · ${barcode}`;
+  document.getElementById('pc-sc').textContent = grade;
+
+  // QI satırı
+  const nutri = p.nutriments || {};
+  document.getElementById('pc-qi').innerHTML = [
+    {v: grade, l: 'Nutri-Score'},
+    {v: offAllergens.length ? offAllergens.length+'x' : '✓', l: 'Alerjen'},
+    {v: Math.round(nutri['energy-kcal_100g']||0)+' kcal', l: '100g'}
+  ].map(q => `<div><div class="qi-v">${q.v}</div><div class="qi-l">${q.l}</div></div>`).join('');
+
+  // Banner
+  const banner = document.getElementById('banner');
+  if(activeAl.size > 0) {
+    const hits = offAllergens.filter(a => activeAl.has(a));
+    if(hits.length) {
+      const alList = LANGS[lang].al;
+      const names = hits.map(id => { const f = alList.find(x=>x.id===id); return f ? f.e+' '+f.l : id; }).join(', ');
+      banner.className = 'banner show danger';
+      banner.innerHTML = `${t.bannerD} <strong>${names}</strong> ${t.bannerC}`;
+    } else {
+      banner.className = 'banner show safe';
+      banner.innerHTML = `${t.bannerS} <strong>${t.bannerSE}</strong>`;
+    }
+  } else banner.className = 'banner';
+
+  // İç tab başlıkları
+  document.getElementById('itabs').innerHTML = [['j','tabJ'],['i','tabI'],['n','tabN'],['h','tabH']].map(([id,lk],i) =>
+    `<button class="itab${i===0?' active':''}" onclick="iTab('${id}',this)">${t[lk]}</button>`
+  ).join('');
+
+  // Yolculuk — OFF verisi
+  const countries = (p.countries_tags||[]).map(c=>c.replace('en:','')).join(', ') || '-';
+  const stores = (p.stores_tags||[]).join(', ') || '-';
+  document.getElementById('j-steps').innerHTML = [
+    {dot:'farm',ic:'🌍',n:'Menşei',d:`Ülke: ${countries}`,dt:p.created_t ? new Date(p.created_t*1000).toLocaleDateString() : '-'},
+    {dot:'proc',ic:'🏭',n:'Üretici',d:`${brand}`,dt:''},
+    {dot:'store',ic:'🏪',n:'Satış Noktaları',d:stores,dt:''},
+  ].map(s => `<div class="jstep"><div class="jdot ${s.dot}">${s.ic}</div><div class="jinfo"><div class="jnm">${s.n}</div><div class="jdt">${s.d}</div><div class="jd">${s.dt}</div></div></div>`).join('');
+
+  const certs = [];
+  if(p.labels_tags?.includes('en:organic')) certs.push('Organik');
+  if(p.labels_tags?.includes('en:fair-trade')) certs.push('Fair Trade');
+  if(p.labels_tags?.includes('en:vegan')) certs.push('Vegan');
+  if(p.labels_tags?.includes('en:vegetarian')) certs.push('Vejetaryen');
+  document.getElementById('j-certs').innerHTML = certs.map(c => `<div class="cert">✓ ${c}</div>`).join('');
+
+  // Bileşenler
+  const ings = p.ingredients || [];
+  if(ings.length) {
+    document.getElementById('ing-c').innerHTML = ings.slice(0,12).map(ing => {
+      const alHit = (ing.allergens||[]).length > 0;
+      return `<div class="ing-item${alHit?' ahi':''}">
+        <div class="ing-nm">${ing.text||ing.id||'-'}</div>
+        <div class="ing-a">${ing.percent_estimate ? Math.round(ing.percent_estimate)+'%' : ''}</div>
+        <span class="itag ${alHit?'warn':'safe'}">${alHit?t.tagWarn:t.tagSafe}</span>
+      </div>`;
+    }).join('');
+  } else {
+    const ingText = p.ingredients_text || p.ingredients_text_tr || p.ingredients_text_en || '';
+    document.getElementById('ing-c').innerHTML = ingText 
+      ? `<div style="grid-column:1/-1;font-size:12px;color:var(--ink2);line-height:1.7">${ingText}</div>`
+      : `<div style="grid-column:1/-1;font-size:12px;color:var(--ink3)">Bileşen bilgisi mevcut değil</div>`;
+  }
+
+  // Besin değerleri
+  const nutriMap = [
+    {k:'energy-kcal_100g', tr:'Enerji', en:'Energy', de:'Energie', fr:'Énergie', ja:'エネルギー', zh:'能量', unit:'kcal', max:800, c:'#6c3483'},
+    {k:'fat_100g', tr:'Yağ', en:'Fat', de:'Fett', fr:'Lipides', ja:'脂質', zh:'脂肪', unit:'g', max:100, c:'#e67e22'},
+    {k:'saturated-fat_100g', tr:'Doymuş Yağ', en:'Sat. Fat', de:'Gesätt. Fett', fr:'Acides gras sat.', ja:'飽和脂肪', zh:'饱和脂肪', unit:'g', max:30, c:'#e74c3c'},
+    {k:'carbohydrates_100g', tr:'Karbonhidrat', en:'Carbs', de:'Kohlenhydrate', fr:'Glucides', ja:'炭水化物', zh:'碳水化合物', unit:'g', max:100, c:'#8e44ad'},
+    {k:'sugars_100g', tr:'Şeker', en:'Sugar', de:'Zucker', fr:'Sucres', ja:'糖質', zh:'糖', unit:'g', max:50, c:'#c0392b'},
+    {k:'fiber_100g', tr:'Lif', en:'Fibre', de:'Ballaststoffe', fr:'Fibres', ja:'食物繊維', zh:'膳食纤维', unit:'g', max:30, c:'#27ae60'},
+    {k:'proteins_100g', tr:'Protein', en:'Protein', de:'Eiweiß', fr:'Protéines', ja:'タンパク質', zh:'蛋白质', unit:'g', max:50, c:'#2980b9'},
+    {k:'salt_100g', tr:'Tuz', en:'Salt', de:'Salz', fr:'Sel', ja:'食塩', zh:'盐', unit:'g', max:6, c:'#7f8c8d'},
+  ];
+  document.getElementById('nut-c').innerHTML = nutriMap.map(n => {
+    const val = nutri[n.k];
+    if(val === undefined || val === null) return '';
+    const pct = Math.min(Math.round((val/n.max)*100), 100);
+    const lbl = n[lang] || n.tr;
+    return `<div class="nut-row"><span class="nut-l">${lbl}</span><div class="nut-bg"><div class="nut-f" style="width:${pct}%;background:${n.c}"></div></div><span class="nut-v">${Math.round(val*10)/10}${n.unit}</span></div>`;
+  }).filter(Boolean).join('') || '<div style="font-size:12px;color:var(--ink3)">Besin değeri mevcut değil</div>';
+
+  // Sağlık
+  const clsMap = {'A+':'ra','A':'ra','B+':'rb','B':'rb','C':'rc','D':'rc','F':'rc'};
+  const hr = document.getElementById('h-ring');
+  hr.textContent = grade; hr.className = `h-ring ${clsMap[grade]||'rc'}`;
+  const titles = {tr:{'A+':'Mükemmel','B+':'İyi','C':'Orta','D':'Zayıf','F':'Çok Zayıf'},en:{'A+':'Excellent','B+':'Good','C':'Average','D':'Poor','F':'Very Poor'}};
+  document.getElementById('h-ttl').textContent = (titles[lang]||titles.tr)[grade] || grade;
+  document.getElementById('h-dsc').textContent = p.nutriscore_score !== undefined ? `Nutri-Score: ${p.nutriscore_score} puan` : '';
+
+  // Sağlık uyarıları
+  const healthAlerts = [];
+  if(nutri['sugars_100g'] > 20) healthAlerts.push({t:'warn', x: lang==='tr'?`Yüksek şeker: ${Math.round(nutri['sugars_100g'])}g/100g`:`High sugar: ${Math.round(nutri['sugars_100g'])}g/100g`});
+  if(nutri['saturated-fat_100g'] > 5) healthAlerts.push({t:'warn', x: lang==='tr'?`Yüksek doymuş yağ: ${Math.round(nutri['saturated-fat_100g'])}g/100g`:`High saturated fat: ${Math.round(nutri['saturated-fat_100g'])}g/100g`});
+  if(nutri['salt_100g'] > 1.5) healthAlerts.push({t:'warn', x: lang==='tr'?`Yüksek tuz: ${Math.round(nutri['salt_100g']*10)/10}g/100g`:`High salt: ${Math.round(nutri['salt_100g']*10)/10}g/100g`});
+  if(nutri['fiber_100g'] > 3) healthAlerts.push({t:'ok', x: lang==='tr'?`İyi lif kaynağı: ${Math.round(nutri['fiber_100g'])}g/100g`:`Good fibre source: ${Math.round(nutri['fiber_100g'])}g/100g`});
+  if(p.nutriscore_grade === 'a') healthAlerts.push({t:'ok', x: lang==='tr'?'Nutri-Score A — En yüksek besin kalitesi':'Nutri-Score A — Highest nutritional quality'});
+  offAllergens.forEach(a => {
+    const f = LANGS[lang].al.find(x=>x.id===a);
+    if(f) healthAlerts.push({t:'danger', x: `${f.e} ${lang==='tr'?'Alerjen':'Allergen'}: ${f.l}`});
+  });
+  document.getElementById('h-alerts').innerHTML = healthAlerts.map(a =>
+    `<div class="alert ${a.t}"><span>${a.t==='ok'?'✓':a.t==='info'?'ℹ':'⚠'}</span><span>${a.x}</span></div>`
+  ).join('') || '<div style="font-size:12px;color:var(--ink3)">Sağlık notu mevcut değil</div>';
+
+  // Göster
+  document.getElementById('pcard').className = 'pcard show';
+  iTab('j', null);
+  document.getElementById('pcard').scrollIntoView({behavior:'smooth', block:'nearest'});
+  currentProd = { id: barcode, name_tr: name, name_en: name, brand, barcode, allergens: offAllergens, health_score: grade, category: 'off' };
+  showToast(`✓ ${name.substring(0,25)}...`);
+
+  // Supabase'e kaydet (cache)
+  try {
+    await SB.from('products').upsert({
+      name_tr: name, name_en: name, brand, barcode,
+      category: 'off', health_score: grade,
+      allergens: offAllergens,
+      certifications: certs,
+      active: true
+    }, { onConflict: 'barcode' });
+  } catch(e) {}
 }
 
 // ═══ ALIŞVERİŞ LİSTESİ ═══
@@ -1210,7 +1399,7 @@ function showToast(msg) {
 }
 
 // ═══ BOOT ═══
-init();
+(async () => { await init(); })();
 </script>
 </body>
 </html>
